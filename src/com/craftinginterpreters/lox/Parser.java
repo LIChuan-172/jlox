@@ -1,6 +1,7 @@
 package com.craftinginterpreters.lox;
 
 import static com.craftinginterpreters.lox.TokenType.*;
+import java.util.ArrayList;
 import java.util.List;
 
 public class Parser {
@@ -14,16 +15,96 @@ public class Parser {
     this.tokens = tokens;
   }
 
-  Expr parse() {
+  List<Stmt> parse() {
+    List<Stmt> statements = new ArrayList<>();
+    while (!isAtEnd()) {
+      statements.add(declaration());
+    }
+    return statements;
+  }
+
+  private Expr expression() {
+    return assignment();
+  }
+
+  private Stmt declaration() {
     try {
-      return expression();
+      if (match(VAR))
+        return varDeclaration();
+
+      return statement();
     } catch (ParseError error) {
+      synchronize();
       return null;
     }
   }
 
-  private Expr expression() {
-    return equality();
+  private Stmt statement() {
+    if (match(PRINT))
+      return printStatement();
+
+    if (match(LEFT_BRACE))
+      return new Stmt.Block(block());
+
+    return expressionStatement();
+  }
+
+  private Stmt printStatement() {
+    Expr value = expression();
+    consume(SEMICOLON, "Expect ';' after value.");
+    return new Stmt.Print(value);
+  }
+
+  private Stmt varDeclaration() {
+    Token name = consume(IDENTIFIER, "Expect variable name.");
+
+    Expr initializer = null;
+    if (match(EQUAL)) {
+      initializer = expression();
+    }
+
+    consume(SEMICOLON, "Expect ';' after variable declaration.");
+    return new Stmt.Var(name, initializer);
+  }
+
+  private Stmt expressionStatement() {
+    Expr value = expression();
+    consume(SEMICOLON, "Expect ';' after value.");
+    return new Stmt.Expression(value);
+  }
+
+  private List<Stmt> block() {
+    List<Stmt> statements = new ArrayList<>();
+
+    while (!check(RIGHT_BRACE) && !isAtEnd()) {
+      statements.add(declaration());
+    }
+
+    consume(RIGHT_BRACE, "Expect '}' after block.");
+    return statements;
+  }
+
+  private Expr assignment() {
+    Expr expr = equality();
+
+    if (match(EQUAL)) {
+      Token equals = previous();
+
+      // We recursively call assignment() to allow for chained assignments like a = b = c.
+      Expr value = assignment();
+
+      if (expr instanceof Expr.Variable variable) {
+        Token name = variable.name;
+        return new Expr.Assign(name, value);
+      }
+      
+      // We report an error if the left-hand side of the assignment is not a
+      // valid assignment target, but we don't throw it because the parser
+      // isn't in a confused state where we need to go into panic mode and synchronize.
+      error(equals, "Invalid assignment target.");
+    }
+
+    return expr;
   }
 
   private Expr equality() {
@@ -158,6 +239,8 @@ public class Parser {
       return new Expr.Literal(null);
     if (match(NUMBER, STRING))
       return new Expr.Literal(previous().literal);
+    if (match(IDENTIFIER))
+      return new Expr.Variable(previous());
     if (match(LEFT_PAREN)) {
       Expr expr = expression();
       consume(RIGHT_PAREN, "Expect ')' after expression.");

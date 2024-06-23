@@ -1,7 +1,9 @@
-class Bacon {
-  eat() {
-    print "Crunch crunch crunch!";
+class Doughnut {
+  cook() {
+    print "Fry until golden brown.";
   }
 }
 
-Bacon().eat(); // Prints "Crunch crunch crunch!".
+class BostonCream < Doughnut {}
+
+BostonCream().cook();
